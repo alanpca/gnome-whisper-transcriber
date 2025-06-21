@@ -58,6 +58,16 @@ gnome-extensions enable whisper-transcriber@opreto.com
 5. Wait for the transcription to complete (notification will appear)
 6. The transcribed text will be automatically copied to your clipboard
 
+## Usage with Keyboard Shortcut
+
+1. Press the shortcut key (default: Control+Alt+A) to start recording
+2. Speak into your microphone
+3. Press the shortcut key again to stop recording and start transcription
+4. Wait for the transcription to complete (notification will appear)
+5. The transcribed text will be automatically copied to your clipboard
+
+You can configure or disable the shortcut key in the extension settings.
+
 ## Troubleshooting
 
 ### Checking Requirements
@@ -109,4 +119,5 @@ This extension is released under the [MIT License](LICENSE).
 ## Credits
 
 - Developed by [Alan P. Laudicina](https://alanp.ca/) at [Opreto](https://www.opreto.com/)
+- Additional contributions by [Marco Bravo Mejías](https://github.com/layfellow)
 - Uses OpenAI's Whisper API for speech recognition
