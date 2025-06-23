@@ -6,5 +6,15 @@
       <summary>OpenAI API Key</summary>
       <description>API key for accessing OpenAI Whisper transcription service</description>
     </key>
+    <key name="toggle-recording-shortcut" type="as">
+      <default>['&lt;Control&gt;&lt;Alt&gt;a']</default>
+      <summary>Toggle recording shortcut</summary>
+      <description>Keyboard shortcut to start or stop recording</description>
+    </key>
+    <key name="toggle-recording-shortcut-backup" type="as">
+      <default>['&lt;Control&gt;&lt;Alt&gt;a']</default>
+      <summary>Backup of toggle recording shortcut</summary>
+      <description>Backup of keyboard shortcut when disabled</description>
+    </key>
   </schema>
 </schemalist>
