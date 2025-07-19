@@ -24,7 +24,7 @@ A GNOME Shell extension that allows you to record audio from your microphone, tr
 
 1. Clone this repository directly into your extensions directory:
 ```bash
-git clone https://github.com/layfellow/gnome-whisper-transcriber.git ~/.local/share/gnome-shell/extensions/whisper-transcriber@opreto.com
+git clone https://github.com/alanpca/gnome-whisper-transcriber.git ~/.local/share/gnome-shell/extensions/whisper-transcriber@opreto.com
 ```
 
 2. Compile the schema:
