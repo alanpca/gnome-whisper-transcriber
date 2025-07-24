@@ -191,17 +191,20 @@ const WhisperTranscriberIndicator = GObject.registerClass(
                     null,           // Working directory (null = default)
                     ffmpegArgs,     // Arguments
                     null,           // Environment variables (null = inherit)
-                    GLib.SpawnFlags.SEARCH_PATH,  // Use PATH to find executable
+                    GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,  // Use PATH and don't reap child
                     null            // Child setup function
                 );
 
                 let success = spawnResult[0];
                 let pid = spawnResult[1];
 
-                if (success) {
+                this._logDebug(_('Spawn result - success: %s, pid: %s').format(success, pid));
+
+                if (success && pid > 0) {
                     recordingProcess = pid;
+                    this._logDebug(_('Started recording process with PID: %s').format(recordingProcess));
                 } else {
-                    throw new Error("Failed to start recording process");
+                    throw new Error("Failed to start recording process - invalid PID");
                 }
             } catch (e) {
                 this._notify(_('Error starting recording: %s').format(e.message));
@@ -212,24 +215,35 @@ const WhisperTranscriberIndicator = GObject.registerClass(
         _stopRecording() {
             if (!isRecording) return;
 
-            // Kill the recording process more precisely
+            // Terminate the recording process using the stored PID
             try {
-                // Use a more specific pkill command to target our ffmpeg instance
-                // This pattern matches ffmpeg processes writing to our specific output file
-                const killPattern = 'ffmpeg.*' + recordingPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const killArgs = ['pkill', '-f', killPattern];
-
-                // Fallback to more general ffmpeg kill if the specific kill fails
-                try {
-                    GLib.spawn_sync(null, killArgs, null, GLib.SpawnFlags.SEARCH_PATH, null);
-                } catch (e) {
-                    // If the specific kill fails, try a more general approach
-                    GLib.spawn_sync(null, ['pkill', 'ffmpeg'], null, GLib.SpawnFlags.SEARCH_PATH, null);
+                if (recordingProcess && recordingProcess > 0) {
+                    this._logDebug(_('Attempting to terminate PID: %s').format(recordingProcess));
+                    
+                    // Send SIGTERM to the specific process
+                    let killResult = GLib.spawn_sync(
+                        null,
+                        ['kill', '-TERM', recordingProcess.toString()],
+                        null,
+                        GLib.SpawnFlags.SEARCH_PATH,
+                        null
+                    );
+                    
+                    if (killResult[0]) {
+                        this._logDebug(_('Successfully terminated recording process (PID: %s)').format(recordingProcess));
+                    } else {
+                        this._logDebug(_('Kill command failed for PID: %s').format(recordingProcess));
+                    }
+                    
+                    recordingProcess = null;
+                } else {
+                    this._logDebug(_('No valid recording process PID to terminate: %s').format(recordingProcess));
                 }
 
                 this._logDebug(_('Processing recording...'));
             } catch (e) {
                 this._notify(_('Error stopping recording: %s').format(e.message));
+                this._logDebug(_('Kill error details: %s').format(e.message));
             }
 
             this._waitForFileCompletion(recordingPath, 0);
@@ -488,7 +502,7 @@ export default class WhisperTranscriberExtension extends Extension {
         // Stop any ongoing recording
         if (isRecording) {
             try {
-                GLib.spawn_sync(null, ['pkill', 'ffmpeg'], null, GLib.SpawnFlags.SEARCH_PATH, null);
+                indicator._stopRecording();
             } catch (e) {
                 // Ignore errors during cleanup
             }
