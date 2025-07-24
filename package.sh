@@ -18,11 +18,9 @@ required_files=(
   "PRIVACY.md"
   "README.md"
   "stylesheet.css"
-  "po/POTFILES.in"
-  "po/LINGUAS"
-  "po/whisper-transcriber.pot"
   "schemas/org.gnome.shell.extensions.whisper-transcriber.gschema.xml"
   "schemas/gschemas.compiled"
+  "icon.png"
 )
 
 for file in "${required_files[@]}"; do
@@ -42,25 +40,7 @@ if [ ! -f "${SCRIPT_DIR}/schemas/gschemas.compiled" ]; then
   fi
 fi
 
-# Create po directory if it doesn't exist
-if [ ! -d "${SCRIPT_DIR}/po" ]; then
-  echo "Creating po directory structure..."
-  mkdir -p "${SCRIPT_DIR}/po"
-  echo "extension.js" > "${SCRIPT_DIR}/po/POTFILES.in"
-  echo "prefs.js" >> "${SCRIPT_DIR}/po/POTFILES.in"
-  touch "${SCRIPT_DIR}/po/LINGUAS"
-fi
-
-# Ensure .pot file exists
-if [ ! -f "${SCRIPT_DIR}/po/whisper-transcriber.pot" ]; then
-  echo "Generating .pot file..."
-  xgettext --from-code=UTF-8 --language=JavaScript -o "${SCRIPT_DIR}/po/whisper-transcriber.pot" \
-    "${SCRIPT_DIR}/extension.js" "${SCRIPT_DIR}/prefs.js"
-  if [ $? -ne 0 ]; then
-    echo "Error: Failed to generate whisper-transcriber.pot!"
-    exit 1
-  fi
-fi
+# Translation files are compiled during pack, not included in source
 
 # Create build directory
 BUILD_DIR="/tmp/${EXT_UUID}-build"

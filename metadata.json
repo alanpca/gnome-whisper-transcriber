@@ -6,5 +6,6 @@
   "url": "https://github.com/alanpca/gnome-whisper-transcriber",
   "version": "0.0.1",
   "license": "MIT",
-  "settings-schema": "org.gnome.shell.extensions.whisper-transcriber"
+  "settings-schema": "org.gnome.shell.extensions.whisper-transcriber",
+  "icon": "icon.png"
 }
