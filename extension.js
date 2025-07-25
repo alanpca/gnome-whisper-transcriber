@@ -23,6 +23,7 @@ let recordingPath = '';
 let recordingProcess = null;
 let settings = null;
 let keyboardShortcut = null;
+let timeoutIds = [];
 
 // API key settings key
 const API_KEY_SETTING = 'whisper-api-key';
@@ -34,19 +35,34 @@ const CLIPBOARD_TYPE = St.ClipboardType.CLIPBOARD;
  * @returns {boolean} True if all dependencies are available
  */
 function _checkDependencies() {
-    let ffmpegCheck = GLib.spawn_command_line_sync('which ffmpeg');
-    let curlCheck = GLib.spawn_command_line_sync('which curl');
-
-    let ffmpegStatus = ffmpegCheck[3];
-    let curlStatus = curlCheck[3];
-
+    // Use Shell.AppSystem to check for applications instead of spawning processes
+    const appSystem = Shell.AppSystem.get_default();
+    
     let missingDeps = [];
 
-    if (ffmpegStatus !== 0) {
+    // Check for ffmpeg availability via which command (non-blocking approach)
+    try {
+        const ffmpegFile = Gio.File.new_for_path('/usr/bin/ffmpeg');
+        if (!ffmpegFile.query_exists(null)) {
+            const ffmpegFile2 = Gio.File.new_for_path('/usr/local/bin/ffmpeg');
+            if (!ffmpegFile2.query_exists(null)) {
+                missingDeps.push('ffmpeg');
+            }
+        }
+    } catch (e) {
         missingDeps.push('ffmpeg');
     }
 
-    if (curlStatus !== 0) {
+    // Check for curl availability
+    try {
+        const curlFile = Gio.File.new_for_path('/usr/bin/curl');
+        if (!curlFile.query_exists(null)) {
+            const curlFile2 = Gio.File.new_for_path('/usr/local/bin/curl');
+            if (!curlFile2.query_exists(null)) {
+                missingDeps.push('curl');
+            }
+        }
+    } catch (e) {
         missingDeps.push('curl');
     }
 
@@ -191,17 +207,20 @@ const WhisperTranscriberIndicator = GObject.registerClass(
                     null,           // Working directory (null = default)
                     ffmpegArgs,     // Arguments
                     null,           // Environment variables (null = inherit)
-                    GLib.SpawnFlags.SEARCH_PATH,  // Use PATH to find executable
+                    GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,  // Use PATH and don't reap child
                     null            // Child setup function
                 );
 
                 let success = spawnResult[0];
                 let pid = spawnResult[1];
 
-                if (success) {
+                this._logDebug(_('Spawn result - success: %s, pid: %s').format(success, pid));
+
+                if (success && pid > 0) {
                     recordingProcess = pid;
+                    this._logDebug(_('Started recording process with PID: %s').format(recordingProcess));
                 } else {
-                    throw new Error("Failed to start recording process");
+                    throw new Error("Failed to start recording process - invalid PID");
                 }
             } catch (e) {
                 this._notify(_('Error starting recording: %s').format(e.message));
@@ -212,24 +231,43 @@ const WhisperTranscriberIndicator = GObject.registerClass(
         _stopRecording() {
             if (!isRecording) return;
 
-            // Kill the recording process more precisely
+            // Terminate the recording process using the stored PID
             try {
-                // Use a more specific pkill command to target our ffmpeg instance
-                // This pattern matches ffmpeg processes writing to our specific output file
-                const killPattern = 'ffmpeg.*' + recordingPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const killArgs = ['pkill', '-f', killPattern];
-
-                // Fallback to more general ffmpeg kill if the specific kill fails
-                try {
-                    GLib.spawn_sync(null, killArgs, null, GLib.SpawnFlags.SEARCH_PATH, null);
-                } catch (e) {
-                    // If the specific kill fails, try a more general approach
-                    GLib.spawn_sync(null, ['pkill', 'ffmpeg'], null, GLib.SpawnFlags.SEARCH_PATH, null);
+                if (recordingProcess && recordingProcess > 0) {
+                    this._logDebug(_('Attempting to terminate PID: %s').format(recordingProcess));
+                    
+                    // Send SIGTERM to the specific process using async subprocess
+                    try {
+                        const proc = Gio.Subprocess.new(
+                            ['kill', '-TERM', recordingProcess.toString()],
+                            Gio.SubprocessFlags.NONE
+                        );
+                        
+                        proc.wait_async(null, (proc, result) => {
+                            try {
+                                const success = proc.wait_finish(result);
+                                if (success) {
+                                    this._logDebug(_('Successfully terminated recording process (PID: %s)').format(recordingProcess));
+                                } else {
+                                    this._logDebug(_('Kill command failed for PID: %s').format(recordingProcess));
+                                }
+                            } catch (e) {
+                                this._logDebug(_('Error waiting for kill process: %s').format(e.message));
+                            }
+                        });
+                    } catch (e) {
+                        this._logDebug(_('Error creating kill subprocess: %s').format(e.message));
+                    }
+                    
+                    recordingProcess = null;
+                } else {
+                    this._logDebug(_('No valid recording process PID to terminate: %s').format(recordingProcess));
                 }
 
                 this._logDebug(_('Processing recording...'));
             } catch (e) {
                 this._notify(_('Error stopping recording: %s').format(e.message));
+                this._logDebug(_('Kill error details: %s').format(e.message));
             }
 
             this._waitForFileCompletion(recordingPath, 0);
@@ -322,7 +360,12 @@ const WhisperTranscriberIndicator = GObject.registerClass(
         // Check for transcription results
         _checkTranscriptionResult(outputPath, originalFilePath) {
             // Check if the output file exists after a short delay
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+            const timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                // Remove from tracked timeouts when done
+                const index = timeoutIds.indexOf(timeoutId);
+                if (index > -1) {
+                    timeoutIds.splice(index, 1);
+                }
                 try {
                     // Check if file exists
                     if (GLib.file_test(outputPath, GLib.FileTest.EXISTS)) {
@@ -394,6 +437,9 @@ const WhisperTranscriberIndicator = GObject.registerClass(
                     return GLib.SOURCE_REMOVE; // Stop checking on error
                 }
             });
+            
+            // Track timeout for cleanup
+            timeoutIds.push(timeoutId);
         }
 
         // Check for error details
@@ -426,7 +472,12 @@ const WhisperTranscriberIndicator = GObject.registerClass(
             }
 
             // Check if file exists and has size
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+            const timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                // Remove from tracked timeouts when done
+                const index = timeoutIds.indexOf(timeoutId);
+                if (index > -1) {
+                    timeoutIds.splice(index, 1);
+                }
                 try {
                     if (GLib.file_test(filePath, GLib.FileTest.EXISTS)) {
                         // Get file info to check size
@@ -457,6 +508,9 @@ const WhisperTranscriberIndicator = GObject.registerClass(
 
                 return GLib.SOURCE_REMOVE;
             });
+            
+            // Track timeout for cleanup
+            timeoutIds.push(timeoutId);
         }
     }
 );
@@ -485,10 +539,16 @@ export default class WhisperTranscriberExtension extends Extension {
     disable() {
         console.log('Disabling Whisper Transcriber extension');
 
+        // Clean up all active timeouts
+        timeoutIds.forEach(id => {
+            GLib.Source.remove(id);
+        });
+        timeoutIds = [];
+
         // Stop any ongoing recording
         if (isRecording) {
             try {
-                GLib.spawn_sync(null, ['pkill', 'ffmpeg'], null, GLib.SpawnFlags.SEARCH_PATH, null);
+                indicator._stopRecording();
             } catch (e) {
                 // Ignore errors during cleanup
             }
@@ -511,10 +571,10 @@ export default class WhisperTranscriberExtension extends Extension {
         // Get shortcut setting
         const shortcuts = settings.get_strv(TOGGLE_SHORTCUT_SETTING);
 
-        // Only set up shortcut if it exists and is not empty
+        // Only set up shortcut if it exists and is not empty  
         if (shortcuts && shortcuts.length > 0 && shortcuts[0] && shortcuts[0].length > 0) {
-            // Parse the accelerator
-            const [key, mods] = Gtk.accelerator_parse(shortcuts[0]);
+            // Validate the accelerator format
+            Gtk.accelerator_parse(shortcuts[0]);
 
             // Set up the key binding
             if (Main.wm.addKeybinding) {

@@ -2,9 +2,10 @@
   "name": "Whisper Transcriber",
   "description": "One-click speech-to-text using your microphone and OpenAI's Whisper API. Records audio, transcribes it, and copies text to clipboard.",
   "uuid": "whisper-transcriber@opreto.com",
-  "shell-version": ["45", "46", "47"],
+  "shell-version": ["45", "46", "47", "48"],
   "url": "https://github.com/alanpca/gnome-whisper-transcriber",
   "version": "0.0.1",
   "license": "MIT",
-  "settings-schema": "org.gnome.shell.extensions.whisper-transcriber"
+  "settings-schema": "org.gnome.shell.extensions.whisper-transcriber",
+  "icon": "icon.png"
 }
